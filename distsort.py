@@ -4,9 +4,9 @@ import time
 import socket
 import json
 from merge_sort import *
-
 import random
 
+# Default port
 PORT = 8455
 
 class SortClient:
@@ -71,8 +71,17 @@ class SortServer:
     
     def __init__(self):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.bind(('', PORT))
         self.data = []
+        # Attempt to connect open on defined port.
+        # If it's not available, pick any other port
+        try:
+            self.socket.bind(('', PORT))
+        except socket.error:
+            print "* Port 8455 unavailable"
+            self.socket.bind(('',0))
+            addr, port = self.socket.getsockname()
+            print "* Using port", port
+
 
     def start(self):
         """ Start listening. While data is being sent receive it and 
@@ -92,7 +101,7 @@ class SortServer:
         print "Merge sorting..."
         sortedData = json.dumps(merge_sort(self.data))
         print "Sending sorted data to client..."
-        self.conn.sendall()
+        self.conn.sendall(sortedData)
         print "Data send...closing"
 
     def close(self):
@@ -100,26 +109,50 @@ class SortServer:
         self.socket.close()
 
 
+def getRandomList(length):
+    # Create random list
+    randList = []
+    for i in range(0, length):
+        randList.append(random.randint(0,10000000))
+    return randList
+
 if __name__ == '__main__':
-    if '-server' in sys.argv:
+
+    isServer = False
+    isClient = False
+    # Who will help with sorting?
+    hosts = ['localhost']
+
+    # Parse command lines options
+    optlist, args = getopt.getopt(sys.argv[1:], 'p:', ['server', 'client', 'hosts='])
+    for arg, val in optlist:
+        if arg == '-p':
+            PORT = val
+        if arg == '--client':
+            isClient = True
+        if arg == '--server':
+            isServer = True
+        if arg == '--hosts':
+            [hosts.append(x) for x in val.split()]
+
+    if isServer and isClient:
+        print "Please choose only client or server, not both."
+        exit()
+
+    if isServer:
         s = SortServer()
         s.start()
         s.close()
-    elif '-client' in sys.argv:
-        # Create random list
-        thelist = []
-        for i in range(0, 50000):
-            thelist.append(random.randint(0,10000000))
+
+    elif isClient:
+        theList = getRandomList(10000)
         starttime = time.time()
-        c = SortClient(['192.168.1.133'], thelist) 
+        c = SortClient(hosts, theList) 
         c.start()
         c.recvSortedData()
         c.combineData()
         c.close()
         endtime = time.time()
-        print c.sortedData[0]
         print "Orig size:",len(c.data)
         print "Size:",len(c.sortedData[0])
         print "Time:",endtime-starttime
-        
-
