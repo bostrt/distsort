@@ -1,4 +1,5 @@
 import sys
+import getopt
 import time
 import socket
 import json
@@ -22,6 +23,11 @@ class SortClient:
         # Right now this is hardcodes for only
         # two computers to process the data.
         # This client and a server.
+
+        # Split the data into equal parts for
+        # each computer that is sorting.
+        parts = []
+        
         firstHalf = self.data[0:len(self.data)/2]
         lastHalf  = self.data[len(self.data)/2:len(self.data)]
         self.sendData(self.servers[0], firstHalf)
@@ -29,8 +35,12 @@ class SortClient:
         
     def recvSortedData(self):
         for s in self.sockets:
-            result = json.loads(s.recv(16777216))
-            self.sortedData.append(result)
+            try:
+                raw = s.recv(16777216)
+                result = json.loads(raw)
+                self.sortedData.append(result)
+            except ValueError,msg :
+                print msg
 
     def sendData(self, server, data):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -49,6 +59,7 @@ class SortClient:
             # Merge data and put combined data 
             # back in sorted data
             self.sortedData.append(merge(x,y))
+        # Should be a length 1 list here
         return self.sortedData
 
     def close(self):
@@ -60,15 +71,15 @@ class SortServer:
     
     def __init__(self):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.bind(('localhost', PORT))
+        self.socket.bind(('', PORT))
         self.data = []
 
-    def recvData(self):
+    def start(self):
         """ Start listening. While data is being sent receive it and 
         store in class variable """
         self.socket.listen(1)
         self.conn, addr = self.socket.accept()
-        print "Connection from", addr
+        print "Connection from ", addr
         rawData = ""
         while True:
             raw = self.conn.recv(16777216)
@@ -78,8 +89,11 @@ class SortServer:
                 self.data = json.loads(rawData)
                 break
         # We're done. Send the data back and close the connection
-        self.conn.sendall(json.dumps(merge_sort(self.data)))
-        self.close()
+        print "Merge sorting..."
+        sortedData = json.dumps(merge_sort(self.data))
+        print "Sending sorted data to client..."
+        self.conn.sendall()
+        print "Data send...closing"
 
     def close(self):
         self.conn.close()
@@ -89,19 +103,23 @@ class SortServer:
 if __name__ == '__main__':
     if '-server' in sys.argv:
         s = SortServer()
-        s.recvData()
+        s.start()
         s.close()
     elif '-client' in sys.argv:
         # Create random list
-        starttime = time.time()
         thelist = []
-        for i in range(0, 100000):
+        for i in range(0, 50000):
             thelist.append(random.randint(0,10000000))
-        c = SortClient(['localhost'], thelist)
+        starttime = time.time()
+        c = SortClient(['192.168.1.133'], thelist) 
         c.start()
         c.recvSortedData()
         c.combineData()
         c.close()
         endtime = time.time()
-        print endtime-starttime
+        print c.sortedData[0]
+        print "Orig size:",len(c.data)
+        print "Size:",len(c.sortedData[0])
+        print "Time:",endtime-starttime
+        
 
